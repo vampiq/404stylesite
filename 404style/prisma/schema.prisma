@@ -1,0 +1,232 @@
+// 404style — Prisma schema
+// SQLite для разработки. Для PostgreSQL: поменяй provider на "postgresql",
+// DATABASE_URL на строку подключения и выполни `npm run migrate`.
+// Массивы хранятся как Json (работает и в SQLite, и в PostgreSQL, Prisma >= 6.2).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+  MANAGER
+}
+
+enum OrderStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role      @default(CLIENT)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  orders        Order[]
+  messages      Message[]
+  reviews       Review[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  description   String
+  coverImage    String
+  images        Json      @default("[]") // string[]
+  category      String
+  tags          Json      @default("[]") // string[]
+  clientName    String
+  year          Int
+  resultMetrics Json? // { "Конверсия": "+38%", "Скорость": "0.9s" }
+  isPublished   Boolean   @default(false)
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  @@index([isPublished, category, order])
+}
+
+model Service {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String    @unique
+  description String
+  icon        String
+  priceFrom   Int
+  features    Json      @default("[]") // string[]
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([isActive, order])
+}
+
+model PricingPlan {
+  id          String   @id @default(cuid())
+  name        String
+  price       Int
+  description String
+  features    Json     @default("[]") // string[] | { text, included }[]
+  isPopular   Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([order])
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String? // null — гостевая заявка
+  name           String
+  email          String
+  phone          String
+  projectType    String
+  budget         String?
+  deadline       String?
+  message        String?
+  status         OrderStatus @default(NEW)
+  calculatorData Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages Message[]
+  reviews  Review[]
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@index([email])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  orderId     String
+  senderId    String?
+  senderRole  Role
+  text        String
+  attachments Json     @default("[]") // { name, url, size }[]
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sender User? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+model Review {
+  id            String    @id @default(cuid())
+  userId        String?
+  orderId       String?
+  authorName    String
+  authorCompany String?
+  text          String
+  rating        Int // 1..5, проверяется Zod-схемой
+  avatar        String?
+  isApproved    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([isApproved, createdAt])
+}
+
+model FaqItem {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+  photo     String
+  bio       String
+  socials   Json? // { telegram, github, linkedin, ... }
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Key-value хранилище настроек: contacts, social, meta, ...
+model SiteSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model ContactRequest {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  message     String
+  source      String?
+  isProcessed Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([isProcessed, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String // CREATE | UPDATE | DELETE | STATUS_CHANGE | LOGIN ...
+  entity    String
+  entityId  String?
+  payload   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

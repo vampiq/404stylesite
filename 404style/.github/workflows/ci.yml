@@ -1,0 +1,17 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      JWT_ACCESS_SECRET: ci-access-secret-ci-access-secret-0001
+      JWT_REFRESH_SECRET: ci-refresh-secret-ci-refresh-secret-002
+      DATABASE_URL: file:./ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
