@@ -1,0 +1,4 @@
+[build]
+  base = "404style"
+  command = "npm ci --include=dev && npm run build:client"
+  publish = "client/dist"
